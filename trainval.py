@@ -13,8 +13,8 @@ import exp_configs
 import time
 import numpy as np
 
-from src import models
-from src import datasets
+import models
+import datasets
 
 
 import argparse
@@ -28,31 +28,25 @@ from torch.utils.data import DataLoader
 cudnn.benchmark = True
 
 
-def trainval(exp_dict, savedir_base, datadir, reset=False, num_workers=0):
-    # bookkeepting stuff
-    # ==================
-    pprint.pprint(exp_dict)
-    exp_id = hu.hash_dict(exp_dict)
-    savedir = os.path.join(savedir_base, exp_id)
-    if reset:
-        hc.delete_and_backup_experiment(savedir)
-
-    os.makedirs(savedir, exist_ok=True)
-    hu.save_json(os.path.join(savedir, "exp_dict.json"), exp_dict)
-    print("Experiment saved in %s" % savedir)
+def trainval(exp_dict, savedir, args):
+    """
+    exp_dict: dictionary defining the hyperparameters of the experiment
+    savedir: the directory where the experiment will be saved
+    args: arguments passed through the command line
+    """
 
     # Dataset
     # ==================
     # train set
     train_set = datasets.get_dataset(dataset_dict=exp_dict["dataset"],
                                      split="train",
-                                     datadir=datadir,
+                                     datadir=args.datadir,
                                      exp_dict=exp_dict,
                                      dataset_size=exp_dict['dataset_size'])
     # val set
     val_set = datasets.get_dataset(dataset_dict=exp_dict["dataset"],
                                    split="val",
-                                   datadir=datadir,
+                                   datadir=args.datadir,
                                    exp_dict=exp_dict,
                                    dataset_size=exp_dict['dataset_size'])
 
@@ -60,10 +54,10 @@ def trainval(exp_dict, savedir_base, datadir, reset=False, num_workers=0):
     val_loader = DataLoader(val_set,
                             sampler=val_sampler,
                             batch_size=1,
-                            num_workers=num_workers)
+                            num_workers=args.num_workers)
     # Model
     # ==================
-    model = models.get_model(model_dict=exp_dict['model'],
+    model = models.CountingModel(
                              exp_dict=exp_dict,
                              train_set=train_set).cuda()
 
@@ -91,7 +85,7 @@ def trainval(exp_dict, savedir_base, datadir, reset=False, num_workers=0):
     train_loader = DataLoader(train_set,
                               sampler=train_sampler,
                               batch_size=exp_dict["batch_size"], 
-                              drop_last=True, num_workers=num_workers)
+                              drop_last=True, num_workers=args.num_workers)
 
     for e in range(s_epoch, exp_dict['max_epoch']):
         # Validate only at the start of each cycle
@@ -146,38 +140,15 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Collect experiments
-    # ===================
-    if args.exp_id is not None:
-        # select one experiment
-        savedir = os.path.join(args.savedir_base, args.exp_id)
-        exp_dict = hu.load_json(os.path.join(savedir, "exp_dict.json"))
-
-        exp_list = [exp_dict]
-
+    from haven import haven_wizard as hw
+    import exp_configs
+    if os.path.exists('job_configs.py'):
+        import job_configs
+        job_config = job_configs.JOB_CONFIG
     else:
-        # select exp group
-        exp_list = []
-        for exp_group_name in args.exp_group_list:
-            exp_list += exp_configs.EXP_GROUPS[exp_group_name]
+        job_config = None 
 
-    # Run experiments
-    # ===============
-    if args.run_jobs:
-        from haven import haven_jobs as hjb
-        jm = hjb.JobManager(exp_list=exp_list, savedir_base=args.savedir_base)
-        jm_summary_list = jm.get_summary()
-        print(jm.get_summary()['status'])
-
-
-        import usr_configs as uc
-        uc.run_jobs(exp_list, args.savedir_base, args.datadir)
-    
-    else:
-        for exp_dict in exp_list:
-            # do trainval
-            trainval(exp_dict=exp_dict,
-                    savedir_base=args.savedir_base,
-                    datadir=args.datadir,
-                    reset=args.reset,
-                    num_workers=args.num_workers)
+    hw.run_wizard(func=trainval, 
+                  exp_groups=exp_configs.EXP_GROUPS, 
+                  job_config=job_config,
+                  args=args)
