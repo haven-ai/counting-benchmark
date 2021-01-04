@@ -1,18 +1,10 @@
 # Build a Counting Benchmark in 3 minutes
 
-## Usage
-
-```
-pip install git+https://github.com/ElementAI/LCFCN
-```
-
-
-## Experiments
-
 ### 1. Install dependencies
 
 ```
 pip install -r requirements.txt
+pip install git+https://github.com/ElementAI/LCFCN
 ```
 This command installs pydicom and the [Haven library](https://github.com/haven-ai/haven-ai) which helps in managing the experiments.
 
